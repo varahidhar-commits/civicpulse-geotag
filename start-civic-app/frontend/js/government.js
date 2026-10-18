@@ -82,7 +82,7 @@ const GovernmentPortal = (() => {
         <div class="card" style="margin-bottom:12px;border-left:4px solid ${n.readAt ? '#8aa0b3' : '#e35b4f'}">
           <div class="complaint-title">⚠️ Worker has not started: ${escapeHtml(n.complaintTitle || 'Complaint')}</div>
           <div class="complaint-meta"><span>Assigned worker: <b>${escapeHtml(n.workerName)}</b></span>
-            <span>Deadline: ${escapeHtml(new Date(n.deadlineAt).toLocaleString())}</span>
+            <span>Start deadline: ${escapeHtml(new Date(n.deadlineAt).toLocaleString())}</span>
             <span>${escapeHtml(timeAgo(n.createdAt))}</span></div>
           <p class="field-hint">Complaint ID: ${escapeHtml(n.complaintId)}. Please contact the worker or reassign the unstarted task.</p>
           ${!n.readAt ? `<button class="btn btn-outline btn-sm" data-read-alert="${escapeHtml(n.id)}">Mark as read</button>` : '<span class="field-hint">✓ Read</span>'}
@@ -156,11 +156,28 @@ const GovernmentPortal = (() => {
 
   function govComplaintCard(c, workers) {
     const canAssign = c.status === 'pending' || c.status === 'assigned';
-    const workerOptions = workers.map((w) => `<option value="${w.id}">${escapeHtml(w.name)} — ${escapeHtml(w.region || '')}</option>`).join('');
+    const workerOptions = workers.map((w) =>
+      `<option value="${escapeHtml(w.id)}" ${c.assignedWorkerId === w.id ? 'selected' : ''}>${escapeHtml(w.name)} — ${escapeHtml(w.region || '')}</option>`
+    ).join('');
     const assignBlock = canAssign ? `
-      <div class="form-row" style="margin-top:10px">
-        <select id="worker-select-${c.id}">${workerOptions || '<option disabled>No workers registered yet</option>'}</select>
-        <button class="btn btn-primary btn-sm" id="assign-btn-${c.id}" ${workers.length ? '' : 'disabled'}>Assign / reassign</button>
+      <div style="margin-top:12px;padding:14px;border:1px solid #cbdcf5;border-radius:10px;background:#f4f8ff">
+        <strong>🏛️ Assign worker and choose start deadline</strong>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin-top:10px">
+          <label style="display:block;flex:1;min-width:180px;font-size:13px;font-weight:600">
+            Worker
+            <select id="worker-select-${c.id}" style="margin-top:5px;width:100%">
+              ${workerOptions || '<option disabled selected>No workers registered yet</option>'}
+            </select>
+          </label>
+          <label style="display:block;flex:1;min-width:200px;font-size:13px;font-weight:600">
+            Start work before (date and time)
+            <input type="datetime-local" id="start-deadline-${c.id}" required min="${localDateTimeInputMin()}" style="margin-top:5px;width:100%" />
+          </label>
+          <button class="btn btn-primary btn-sm" id="assign-btn-${c.id}" ${workers.length ? '' : 'disabled'}>
+            ${c.status === 'assigned' ? 'Update assignment & deadline' : 'Assign with deadline'}
+          </button>
+        </div>
+        <p class="field-hint" style="margin:8px 0 0">The worker will see this deadline in My tasks. If work has not started by then, you will receive a 🔔 Worker Delays alert.</p>
       </div>` : '';
     const photos = [];
     if (c.photoBeforeUrl) photos.push(`<img src="${c.photoBeforeUrl}" alt="Before">`);
@@ -219,15 +236,42 @@ ${c.priorityReasons?.length ? `
       </div>`;
   }
 
+  function localDateTimeInputMin() {
+    const date = new Date(Date.now() + 60 * 1000);
+    const offset = date.getTimezoneOffset() * 60 * 1000;
+    return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+  }
+
   async function assignComplaint(id) {
     const select = document.getElementById(`worker-select-${id}`);
-    if (!select || !select.value) { toast('No worker selected.', 'error'); return; }
+    const input = document.getElementById(`start-deadline-${id}`);
+    if (!select || !select.value) { toast('Choose a worker.', 'error'); return; }
+    if (!input || !input.value) {
+      toast('Select a date and time for the worker to start the task.', 'error');
+      if (input) input.focus();
+      return;
+    }
+    // datetime-local has no timezone. Interpret as the officer's browser-local
+    // time, then send UTC ISO so the backend and worker agree on the deadline.
+    const deadlineMs = new Date(input.value).getTime();
+    if (!Number.isFinite(deadlineMs) || deadlineMs <= Date.now()) {
+      toast('The start deadline must be in the future.', 'error');
+      input.focus();
+      return;
+    }
+    const button = document.getElementById(`assign-btn-${id}`);
     try {
-      await Api.assignComplaint(id, { workerId: select.value });
-      toast('Complaint assigned and dispatched.', 'success');
-      loadComplaints();
+      if (button) button.disabled = true;
+      await Api.assignComplaint(id, {
+        workerId: select.value,
+        startDeadlineAt: new Date(deadlineMs).toISOString()
+      });
+      toast('Task assigned with a start deadline. The worker can now see it.', 'success');
+      await loadComplaints();
     } catch (err) {
       toast(err.message, 'error');
+    } finally {
+      if (button && button.isConnected) button.disabled = false;
     }
   }
 

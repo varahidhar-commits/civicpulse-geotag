@@ -20,11 +20,31 @@ function startSlaMinutes(priorityLevel) {
   return START_SLA_MINUTES[priorityLevel] || START_SLA_MINUTES.Low;
 }
 
-function resetStartDeadline(complaint, now = new Date()) {
+// Require an actual timezone on official-selected deadlines. A local HTML
+// datetime-local field has no timezone: the browser converts it to ISO first.
+function parseOfficerStartDeadline(value, now = new Date()) {
+  if (typeof value !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+    return null;
+  }
+  const ms = Date.parse(value);
+  const current = new Date(now).getTime();
+  if (!Number.isFinite(ms) || !Number.isFinite(current) || ms <= current) return null;
+  return new Date(ms).toISOString();
+}
+
+function resetStartDeadline(complaint, now = new Date(), officerDeadline = undefined) {
   const date = new Date(now);
+  // Two-argument calls are for legacy automatic defaults only. A third
+  // argument indicates an officer-entered deadline and must never fall back.
+  const deadline = arguments.length < 3
+    ? new Date(date.getTime() + startSlaMinutes(complaint.priorityLevel) * 60 * 1000).toISOString()
+    : parseOfficerStartDeadline(officerDeadline, date);
+
+  if (!deadline) throw new Error('A valid future start deadline with a timezone is required.');
   complaint.assignmentId = randomUUID();
   complaint.assignedAt = date.toISOString();
-  complaint.startDeadlineAt = new Date(date.getTime() + startSlaMinutes(complaint.priorityLevel) * 60 * 1000).toISOString();
+  complaint.startDeadlineAt = deadline;
   complaint.startedAt = null;
   complaint.overdueNotifiedAt = null;
 }
@@ -89,6 +109,7 @@ module.exports = {
   START_SLA_MINUTES,
   startSlaMinutes,
   resetStartDeadline,
+  parseOfficerStartDeadline,
   scanOverdueAssignments,
   checkOverdueAssignments
 };
