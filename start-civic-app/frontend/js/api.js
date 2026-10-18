@@ -62,6 +62,8 @@ const Api = {
   myGrievances: () => apiRequest('/worker/grievances'),
 
   // Government
+  govNotifications: () => apiRequest('/government/notifications'),
+  markGovNotificationRead: (id) => apiRequest(`/government/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' }),
   govGrievances: (query = '') => apiRequest(`/government/grievances${query}`),
   respondGrievance: (id, payload) => apiRequest(`/government/grievances/${id}/respond`, { method: 'POST', body: payload }),
   govRegions: () => apiRequest('/government/regions'),

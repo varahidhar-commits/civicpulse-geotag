@@ -351,6 +351,7 @@
     <aside class="sidebar">
       <div class="side-section-label">Government dashboard</div>
       <button class="side-link active" data-gv="overview">📊 Overview</button>
+      <button class="side-link" data-gv="alerts">🔔 Worker delays <span id="gov-alert-count"></span></button>
       <button class="side-link" data-gv="complaints">📥 All complaints</button>
       <button class="side-link" data-gv="map">🗺️ Heat map</button>
       <button class="side-link" data-gv="disaster">⛈️ Disaster prevention</button>
@@ -369,6 +370,13 @@
           <div class="card"><h3>By category</h3><canvas id="chart-category" height="200"></canvas></div>
         </div>
         <div class="card"><h3>By region</h3><canvas id="chart-region" height="120"></canvas></div>
+      </section>
+
+      <section id="gv-alerts" class="hidden">
+        <div class="panel-head"><div><h2>🔔 Worker delay alerts</h2><p style="margin:0">Automatic alerts when a worker has not started by their assigned deadline.</p></div>
+          <button class="btn btn-outline btn-sm" id="btn-refresh-alerts">Refresh alerts</button>
+        </div>
+        <div id="gov-alerts-list"></div>
       </section>
 
       <section id="gv-complaints" class="hidden">

@@ -6,6 +6,7 @@ const bcrypt = require('bcryptjs');
 const { v4: uuid } = require('uuid');
 
 const { load, save } = require('./data/store');
+const { checkOverdueAssignments } = require('./utils/workerAlerts');
 
 const authRoutes = require('./routes/auth');
 const complaintsRoutes = require('./routes/complaints');
@@ -81,6 +82,16 @@ function ensureDemoAccounts() {
 }
 
 ensureDemoAccounts();
+
+// Run checks without a logged-in officer; an API read also checks overdue
+// assignments after Render wakes up from an idle/sleeping state.
+const alertInterval = setInterval(() => {
+  try { checkOverdueAssignments(); }
+  catch (err) { console.error('Worker delay alert scan failed:', err); }
+}, 60 * 1000);
+alertInterval.unref();
+try { checkOverdueAssignments(); }
+catch (err) { console.error('Initial worker delay alert scan failed:', err); }
 
 app.listen(PORT, () => {
   console.log(`\nCivic Engagement Platform running at http://localhost:${PORT}`);

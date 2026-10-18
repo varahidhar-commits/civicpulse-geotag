@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuid } = require('uuid');
 const { load, save } = require('../data/store');
+const { resetStartDeadline } = require('../utils/workerAlerts');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
 const { distanceMeters } = require('../utils/geo');
 const { jaccardSimilarity } = require('../utils/similarity');
@@ -339,11 +340,13 @@ router.post('/:id/assign', requireAuth, requireRole('government'), (req, res) =>
   const worker = db.users.find((u) => u.id === workerId && u.role === 'worker');
   if (!worker) return res.status(404).json({ error: 'Worker not found.' });
 
+  if (!['pending', 'assigned'].includes(c.status)) return res.status(409).json({ error: 'Only pending or unstarted tasks can be assigned or reassigned.' });
+  c.assignedById = req.user.id;
   c.assignedWorkerId = worker.id;
   c.assignedWorkerName = worker.name;
   c.assignedRegion = region || worker.region || 'Central Zone';
   c.status = 'assigned';
-  c.assignedAt = new Date().toISOString();
+  resetStartDeadline(c);
   save(db);
   res.json({ complaint: serializeComplaint(req, c) });
 });
@@ -354,6 +357,8 @@ router.post('/:id/start', requireAuth, requireRole('worker'), (req, res) => {
   const c = db.complaints.find((x) => x.id === req.params.id);
   if (!c) return res.status(404).json({ error: 'Complaint not found.' });
   if (c.assignedWorkerId !== req.user.id) return res.status(403).json({ error: 'This task is not assigned to you.' });
+  if (c.status !== 'assigned') return res.status(409).json({ error: 'Task must be assigned and not yet started.' });
+  c.startedAt = new Date().toISOString();
   c.status = 'in_progress';
   save(db);
   res.json({ complaint: serializeComplaint(req, c) });
@@ -414,6 +419,7 @@ router.post('/:id/feedback', requireAuth, requireRole('public'), (req, res) => {
   } else {
     // Citizen disputes the fix -> reopen for re-assignment.
     c.status = 'assigned';
+    resetStartDeadline(c);
     c.photoAfter = null;
     c.resolutionConfidence = null;
   }

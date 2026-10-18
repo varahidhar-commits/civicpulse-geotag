@@ -1,5 +1,6 @@
 const express = require('express');
 const { load, save } = require('../data/store');
+const { checkOverdueAssignments } = require('../utils/workerAlerts');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { titleForPoints } = require('../utils/scoring');
 
@@ -53,6 +54,29 @@ router.get('/users', requireAuth, requireRole('government'), (req, res) => {
       createdAt: u.createdAt
     }))
   });
+});
+
+// Government officer's own assignment-delay notifications.
+router.get('/notifications', requireAuth, requireRole('government'), (req, res) => {
+  checkOverdueAssignments(); // catches missed checks after a sleeping server wakes
+  const db = load();
+  const notifications = (db.notifications || [])
+    .filter((n) => n.recipientId === req.user.id)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  res.json({ notifications, unreadCount: notifications.filter((n) => !n.readAt).length });
+});
+
+router.post('/notifications/:id/read', requireAuth, requireRole('government'), (req, res) => {
+  const db = load();
+  const notification = (db.notifications || []).find((n) =>
+    n.id === req.params.id && n.recipientId === req.user.id
+  );
+  if (!notification) return res.status(404).json({ error: 'Notification not found.' });
+  if (!notification.readAt) {
+    notification.readAt = new Date().toISOString();
+    save(db);
+  }
+  res.json({ notification });
 });
 
 module.exports = router;
