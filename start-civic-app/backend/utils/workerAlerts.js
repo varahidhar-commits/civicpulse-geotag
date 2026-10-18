@@ -35,7 +35,9 @@ function parseOfficerStartDeadline(value, now = new Date()) {
 
 function resetStartDeadline(complaint, now = new Date(), officerDeadline = undefined) {
   const date = new Date(now);
-  const deadline = officerDeadline === undefined
+  // Two-argument calls are for legacy automatic defaults only. A third
+  // argument indicates an officer-entered deadline and must never fall back.
+  const deadline = arguments.length < 3
     ? new Date(date.getTime() + startSlaMinutes(complaint.priorityLevel) * 60 * 1000).toISOString()
     : parseOfficerStartDeadline(officerDeadline, date);
 
