@@ -26,6 +26,14 @@
       <button class="nav-tab" data-nav="government">Government</button>
       <button class="nav-tab" data-nav="worker">Worker</button>
     </nav>
+    <div class="language-picker">
+      <label for="civic-language" aria-label="Choose language">🌐</label>
+      <select id="civic-language" aria-label="Language / மொழி / भाषा" title="Choose language">
+        <option value="en">English</option>
+        <option value="ta">தமிழ்</option>
+        <option value="hi">हिन्दी</option>
+      </select>
+    </div>
     <div class="topbar-right" id="topbar-right">
       <button class="btn btn-outline btn-sm" style="border-color:rgba(255,255,255,0.4);color:#fff" id="btn-login">Log in</button>
       <button class="btn btn-amber btn-sm" id="btn-signup">Get started</button>
@@ -582,6 +590,8 @@
 
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="vendor/chartjs/chart.umd.js"></script>
+<script src="js/translations.js"></script>
+<script src="js/i18n.js"></script>
 <script src="js/api.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/disaster.js"></script>
