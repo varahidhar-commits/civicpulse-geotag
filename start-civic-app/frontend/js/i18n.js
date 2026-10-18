@@ -42,6 +42,10 @@
     if (Object.prototype.hasOwnProperty.call(entries, raw)) {
       return prefix + entries[raw] + suffix;
     }
+    // Labels often appear as a text node ending in ':' before a bold value.
+    if (raw.endsWith(':') && Object.prototype.hasOwnProperty.call(entries, raw.slice(0, -1))) {
+      return prefix + entries[raw.slice(0, -1)] + ':' + suffix;
+    }
     const emoji = raw.match(emojiStart);
     if (emoji && entries[emoji[2]]) return prefix + emoji[1] + entries[emoji[2]] + suffix;
     const icon = emoji ? emoji[1] : '';
