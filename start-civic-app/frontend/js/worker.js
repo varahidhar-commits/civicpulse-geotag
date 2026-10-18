@@ -81,7 +81,7 @@ const WorkerPortal = (() => {
     return `
       <div style="margin-top:12px;padding:12px 14px;border-radius:10px;background:#eef5ff;border-left:4px solid #2c63c7">
         <strong>⏱ Start work deadline</strong><br>
-        <span>${escapeHtml(deadline.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }))}</span><br>
+        <span>${escapeHtml(deadline.toLocaleString(I18n.locale(), { dateStyle: 'medium', timeStyle: 'short', hour12: true }))}</span><br>
         <span data-start-deadline="${escapeHtml(t.startDeadlineAt)}" aria-live="polite"></span><br>
         <small>This is the deadline to START the task, not to complete it. Press “Start work” before the deadline.</small>
       </div>`;
