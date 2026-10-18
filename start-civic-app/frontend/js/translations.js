@@ -324,7 +324,12 @@ window.CIVIC_TRANSLATIONS = {
     "start work": "பணியைத் தொடங்கு",
     "Deadline hour": "காலக்கெடு மணி",
     "Deadline minute": "காலக்கெடு நிமிடம்",
-    "Deadline AM or PM": "முற்பகல் அல்லது பிற்பகல்"
+    "Deadline AM or PM": "முற்பகல் அல்லது பிற்பகல்",
+    "★★★★★ Excellent": "★★★★★ மிகச் சிறப்பு",
+    "★★★★☆ Good": "★★★★☆ நன்று",
+    "★★★☆☆ Okay": "★★★☆☆ பரவாயில்லை",
+    "★★☆☆☆ Poor": "★★☆☆☆ மோசம்",
+    "★☆☆☆☆ Not fixed": "★☆☆☆☆ சரிசெய்யப்படவில்லை"
   },
   "hi": {
     "Home": "होम",
@@ -649,6 +654,11 @@ window.CIVIC_TRANSLATIONS = {
     "start work": "काम शुरू करें",
     "Deadline hour": "समय-सीमा का घंटा",
     "Deadline minute": "समय-सीमा का मिनट",
-    "Deadline AM or PM": "पूर्वाह्न या अपराह्न"
+    "Deadline AM or PM": "पूर्वाह्न या अपराह्न",
+    "★★★★★ Excellent": "★★★★★ उत्कृष्ट",
+    "★★★★☆ Good": "★★★★☆ अच्छा",
+    "★★★☆☆ Okay": "★★★☆☆ ठीक-ठाक",
+    "★★☆☆☆ Poor": "★★☆☆☆ खराब",
+    "★☆☆☆☆ Not fixed": "★☆☆☆☆ ठीक नहीं हुआ"
   }
 };
