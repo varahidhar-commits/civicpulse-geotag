@@ -10,14 +10,20 @@ const GovernmentPortal = (() => {
     });
     document.getElementById('btn-refresh-gov').addEventListener('click', loadOverview);
     document.getElementById('btn-apply-gov-filter').addEventListener('click', loadComplaints);
+    document.getElementById('btn-refresh-alerts').addEventListener('click', loadAlerts);
+    // Refresh the badge only when the officer is online and viewing this portal.
+    setInterval(() => {
+      if (Session.hasRole('government')) loadAlertBadge();
+    }, 30 * 1000);
   }
 
   function switchView(name) {
     document.querySelectorAll('#view-government [data-gv]').forEach((b) => b.classList.toggle('active', b.dataset.gv === name));
-    ['overview', 'complaints', 'map', 'disaster', 'grievances', 'directory'].forEach((v) => {
+    ['overview', 'alerts', 'complaints', 'map', 'disaster', 'grievances', 'directory'].forEach((v) => {
       document.getElementById(`gv-${v}`).classList.toggle('hidden', v !== name);
     });
     if (name === 'overview') loadOverview();
+    if (name === 'alerts') loadAlerts();
     if (name === 'complaints') loadComplaints();
     if (name === 'map') loadGovMap();
     if (name === 'disaster') DisasterPrevention.renderGov();
@@ -32,6 +38,7 @@ const GovernmentPortal = (() => {
 
   async function loadOverview() {
     welcomeText();
+    loadAlertBadge();
     try {
       const stats = await Api.stats();
       const kpis = document.getElementById('gov-kpis');
@@ -50,6 +57,41 @@ const GovernmentPortal = (() => {
     } catch (err) {
       toast(err.message, 'error');
     }
+  }
+
+  async function loadAlertBadge() {
+    try {
+      const { unreadCount } = await Api.govNotifications();
+      const el = document.getElementById('gov-alert-count');
+      if (el) el.textContent = unreadCount ? `(${unreadCount})` : '';
+    } catch (err) { console.warn('Could not refresh delay notification badge:', err); }
+  }
+
+  async function loadAlerts() {
+    const el = document.getElementById('gov-alerts-list');
+    el.innerHTML = '<p>Loading alerts…</p>';
+    try {
+      const { notifications, unreadCount } = await Api.govNotifications();
+      const badge = document.getElementById('gov-alert-count');
+      if (badge) badge.textContent = unreadCount ? `(${unreadCount})` : '';
+      if (!notifications.length) {
+        el.innerHTML = '<div class="empty-state"><p>✅ No worker delays reported yet.</p></div>';
+        return;
+      }
+      el.innerHTML = notifications.map(n => `
+        <div class="card" style="margin-bottom:12px;border-left:4px solid ${n.readAt ? '#8aa0b3' : '#e35b4f'}">
+          <div class="complaint-title">⚠️ Worker has not started: ${escapeHtml(n.complaintTitle || 'Complaint')}</div>
+          <div class="complaint-meta"><span>Assigned worker: <b>${escapeHtml(n.workerName)}</b></span>
+            <span>Deadline: ${escapeHtml(new Date(n.deadlineAt).toLocaleString())}</span>
+            <span>${escapeHtml(timeAgo(n.createdAt))}</span></div>
+          <p class="field-hint">Complaint ID: ${escapeHtml(n.complaintId)}. Please contact the worker or reassign the unstarted task.</p>
+          ${!n.readAt ? `<button class="btn btn-outline btn-sm" data-read-alert="${escapeHtml(n.id)}">Mark as read</button>` : '<span class="field-hint">✓ Read</span>'}
+        </div>`).join('');
+      el.querySelectorAll('[data-read-alert]').forEach(btn => btn.addEventListener('click', async () => {
+        try { await Api.markGovNotificationRead(btn.dataset.readAlert); await loadAlerts(); }
+        catch (err) { toast(err.message, 'error'); }
+      }));
+    } catch (err) { el.innerHTML = alertHtml(err.message); }
   }
 
   function kpi(label, value, sub) {
@@ -113,12 +155,12 @@ const GovernmentPortal = (() => {
   }
 
   function govComplaintCard(c, workers) {
-    const canAssign = c.status === 'pending';
+    const canAssign = c.status === 'pending' || c.status === 'assigned';
     const workerOptions = workers.map((w) => `<option value="${w.id}">${escapeHtml(w.name)} — ${escapeHtml(w.region || '')}</option>`).join('');
     const assignBlock = canAssign ? `
       <div class="form-row" style="margin-top:10px">
         <select id="worker-select-${c.id}">${workerOptions || '<option disabled>No workers registered yet</option>'}</select>
-        <button class="btn btn-primary btn-sm" id="assign-btn-${c.id}" ${workers.length ? '' : 'disabled'}>Assign &amp; dispatch</button>
+        <button class="btn btn-primary btn-sm" id="assign-btn-${c.id}" ${workers.length ? '' : 'disabled'}>Assign / reassign</button>
       </div>` : '';
     const photos = [];
     if (c.photoBeforeUrl) photos.push(`<img src="${c.photoBeforeUrl}" alt="Before">`);
@@ -172,6 +214,7 @@ ${c.priorityReasons?.length ? `
         ${c.address ? `<p class="field-hint">📍 ${escapeHtml(c.address)} (${c.lat.toFixed(4)}, ${c.lng.toFixed(4)})</p>` : ''}
         ${photos.length ? `<div class="complaint-photos">${photos.join('')}</div>` : ''}
         ${c.assignedWorkerName ? `<p class="field-hint">Assigned to <b>${escapeHtml(c.assignedWorkerName)}</b> · ${escapeHtml(c.assignedRegion || '')}</p>` : ''}
+        ${c.status === 'assigned' && c.startDeadlineAt ? `<p class="field-hint">⏱ Start deadline: ${escapeHtml(new Date(c.startDeadlineAt).toLocaleString())}</p>` : ''}
         ${assignBlock}
       </div>`;
   }
