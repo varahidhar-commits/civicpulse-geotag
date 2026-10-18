@@ -82,7 +82,7 @@ const GovernmentPortal = (() => {
         <div class="card" style="margin-bottom:12px;border-left:4px solid ${n.readAt ? '#8aa0b3' : '#e35b4f'}">
           <div class="complaint-title">⚠️ Worker has not started: ${escapeHtml(n.complaintTitle || 'Complaint')}</div>
           <div class="complaint-meta"><span>Assigned worker: <b>${escapeHtml(n.workerName)}</b></span>
-            <span>Start deadline: ${escapeHtml(new Date(n.deadlineAt).toLocaleString())}</span>
+            <span>Start deadline: ${escapeHtml(new Date(n.deadlineAt).toLocaleString('en-IN', {hour12:true}))}</span>
             <span>${escapeHtml(timeAgo(n.createdAt))}</span></div>
           <p class="field-hint">Complaint ID: ${escapeHtml(n.complaintId)}. Please contact the worker or reassign the unstarted task.</p>
           ${!n.readAt ? `<button class="btn btn-outline btn-sm" data-read-alert="${escapeHtml(n.id)}">Mark as read</button>` : '<span class="field-hint">✓ Read</span>'}
@@ -169,10 +169,26 @@ const GovernmentPortal = (() => {
               ${workerOptions || '<option disabled selected>No workers registered yet</option>'}
             </select>
           </label>
-          <label style="display:block;flex:1;min-width:200px;font-size:13px;font-weight:600">
-            Start work before (date and time)
-            <input type="datetime-local" id="start-deadline-${c.id}" required min="${localDateTimeInputMin()}" style="margin-top:5px;width:100%" />
-          </label>
+          <div class="deadline-fields">
+            <label class="deadline-date">Start work before (date)
+              <input type="date" id="start-date-${c.id}" min="${localDateTimeInputMin().slice(0,10)}" required />
+            </label>
+            <label>Hour
+              <select id="start-hour-${c.id}" aria-label="Deadline hour">
+                ${Array.from({length:12}, (_,i) => i + 1).map(n => `<option value="${n}">${String(n).padStart(2,'0')}</option>`).join('')}
+              </select>
+            </label>
+            <label>Minute
+              <select id="start-minute-${c.id}" aria-label="Deadline minute">
+                ${Array.from({length:60}, (_,i) => i).map(n => `<option value="${n}">${String(n).padStart(2,'0')}</option>`).join('')}
+              </select>
+            </label>
+            <label>AM / PM
+              <select id="start-period-${c.id}" aria-label="Deadline AM or PM">
+                <option value="AM">AM</option><option value="PM">PM</option>
+              </select>
+            </label>
+          </div>
           <button class="btn btn-primary btn-sm" id="assign-btn-${c.id}" ${workers.length ? '' : 'disabled'}>
             ${c.status === 'assigned' ? 'Update assignment & deadline' : 'Assign with deadline'}
           </button>
@@ -231,7 +247,7 @@ ${c.priorityReasons?.length ? `
         ${c.address ? `<p class="field-hint">📍 ${escapeHtml(c.address)} (${c.lat.toFixed(4)}, ${c.lng.toFixed(4)})</p>` : ''}
         ${photos.length ? `<div class="complaint-photos">${photos.join('')}</div>` : ''}
         ${c.assignedWorkerName ? `<p class="field-hint">Assigned to <b>${escapeHtml(c.assignedWorkerName)}</b> · ${escapeHtml(c.assignedRegion || '')}</p>` : ''}
-        ${c.status === 'assigned' && c.startDeadlineAt ? `<p class="field-hint">⏱ Start deadline: ${escapeHtml(new Date(c.startDeadlineAt).toLocaleString())}</p>` : ''}
+        ${c.status === 'assigned' && c.startDeadlineAt ? `<p class="field-hint">⏱ Start deadline: ${escapeHtml(new Date(c.startDeadlineAt).toLocaleString('en-IN', {hour12:true}))}</p>` : ''}
         ${assignBlock}
       </div>`;
   }
@@ -244,19 +260,29 @@ ${c.priorityReasons?.length ? `
 
   async function assignComplaint(id) {
     const select = document.getElementById(`worker-select-${id}`);
-    const input = document.getElementById(`start-deadline-${id}`);
+    const dateInput = document.getElementById(`start-date-${id}`);
+    const hourInput = document.getElementById(`start-hour-${id}`);
+    const minuteInput = document.getElementById(`start-minute-${id}`);
+    const periodInput = document.getElementById(`start-period-${id}`);
     if (!select || !select.value) { toast('Choose a worker.', 'error'); return; }
-    if (!input || !input.value) {
-      toast('Select a date and time for the worker to start the task.', 'error');
-      if (input) input.focus();
+    if (!dateInput || !dateInput.value) {
+      toast('Choose a deadline date.', 'error');
+      if (dateInput) dateInput.focus();
       return;
     }
-    // datetime-local has no timezone. Interpret as the officer's browser-local
-    // time, then send UTC ISO so the backend and worker agree on the deadline.
-    const deadlineMs = new Date(input.value).getTime();
-    if (!Number.isFinite(deadlineMs) || deadlineMs <= Date.now()) {
-      toast('The start deadline must be in the future.', 'error');
-      input.focus();
+    // Explicit 12-hour time selection. 12 AM = 00:xx, 12 PM = 12:xx.
+    const hour12 = Number(hourInput.value);
+    const minute = Number(minuteInput.value);
+    const hour24 = (hour12 % 12) + (periodInput.value === 'PM' ? 12 : 0);
+    const [year, month, day] = dateInput.value.split('-').map(Number);
+    const localDeadline = new Date(year, month - 1, day, hour24, minute);
+    const deadlineMs = localDeadline.getTime();
+    if (!Number.isFinite(deadlineMs) || localDeadline.getFullYear() !== year ||
+        localDeadline.getMonth() !== month - 1 || localDeadline.getDate() !== day ||
+        localDeadline.getHours() !== hour24 || localDeadline.getMinutes() !== minute ||
+        deadlineMs <= Date.now()) {
+      toast('Choose a valid future date and time.', 'error');
+      dateInput.focus();
       return;
     }
     const button = document.getElementById(`assign-btn-${id}`);
