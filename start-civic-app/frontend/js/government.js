@@ -85,11 +85,11 @@ const GovernmentPortal = (() => {
       }
       el.innerHTML = notifications.map(n => `
         <div class="card" style="margin-bottom:12px;border-left:4px solid ${n.readAt ? '#8aa0b3' : '#e35b4f'}">
-          <div class="complaint-title">⚠️ Worker has not started: ${escapeHtml(n.complaintTitle || 'Complaint')}</div>
+          <div class="complaint-title" data-i18n-allow>⚠️ Worker has not started: ${escapeHtml(n.complaintTitle || 'Complaint')}</div>
           <div class="complaint-meta"><span>Assigned worker: <b>${escapeHtml(n.workerName)}</b></span>
             <span>Start deadline: ${escapeHtml(new Date(n.deadlineAt).toLocaleString(I18n.locale(), {hour12:true}))}</span>
             <span>${escapeHtml(timeAgo(n.createdAt))}</span></div>
-          <p class="field-hint">Complaint ID: ${escapeHtml(n.complaintId)}. Please contact the worker or reassign the unstarted task.</p>
+          <p class="field-hint">Complaint ID: ${escapeHtml(n.complaintId)}. <span>Please contact the worker or reassign the unstarted task.</span></p>
           ${!n.readAt ? `<button class="btn btn-outline btn-sm" data-read-alert="${escapeHtml(n.id)}">Mark as read</button>` : '<span class="field-hint">✓ Read</span>'}
         </div>`).join('');
       el.querySelectorAll('[data-read-alert]').forEach(btn => btn.addEventListener('click', async () => {
