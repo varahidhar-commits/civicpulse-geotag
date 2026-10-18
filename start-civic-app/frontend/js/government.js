@@ -11,6 +11,11 @@ const GovernmentPortal = (() => {
     document.getElementById('btn-refresh-gov').addEventListener('click', loadOverview);
     document.getElementById('btn-apply-gov-filter').addEventListener('click', loadComplaints);
     document.getElementById('btn-refresh-alerts').addEventListener('click', loadAlerts);
+    document.addEventListener('civic-language-changed', () => {
+      // Canvas chart labels are painted pixels, so repaint in the new language.
+      if (!document.getElementById('gv-overview').classList.contains('hidden') &&
+          !document.getElementById('view-government').classList.contains('hidden')) loadOverview();
+    });
     // Refresh the badge only when the officer is online and viewing this portal.
     setInterval(() => {
       if (Session.hasRole('government')) loadAlertBadge();
@@ -82,7 +87,7 @@ const GovernmentPortal = (() => {
         <div class="card" style="margin-bottom:12px;border-left:4px solid ${n.readAt ? '#8aa0b3' : '#e35b4f'}">
           <div class="complaint-title">⚠️ Worker has not started: ${escapeHtml(n.complaintTitle || 'Complaint')}</div>
           <div class="complaint-meta"><span>Assigned worker: <b>${escapeHtml(n.workerName)}</b></span>
-            <span>Start deadline: ${escapeHtml(new Date(n.deadlineAt).toLocaleString('en-IN', {hour12:true}))}</span>
+            <span>Start deadline: ${escapeHtml(new Date(n.deadlineAt).toLocaleString(I18n.locale(), {hour12:true}))}</span>
             <span>${escapeHtml(timeAgo(n.createdAt))}</span></div>
           <p class="field-hint">Complaint ID: ${escapeHtml(n.complaintId)}. Please contact the worker or reassign the unstarted task.</p>
           ${!n.readAt ? `<button class="btn btn-outline btn-sm" data-read-alert="${escapeHtml(n.id)}">Mark as read</button>` : '<span class="field-hint">✓ Read</span>'}
@@ -110,7 +115,7 @@ const GovernmentPortal = (() => {
     const chart = new Chart(ctx, {
       type,
       data: {
-        labels,
+        labels: labels.map((label) => I18n.t(label)),
         datasets: [{ label: 'Count', data, backgroundColor: Array.isArray(color) ? color : color, borderRadius: 6 }]
       },
       options: {
@@ -247,7 +252,7 @@ ${c.priorityReasons?.length ? `
         ${c.address ? `<p class="field-hint">📍 ${escapeHtml(c.address)} (${c.lat.toFixed(4)}, ${c.lng.toFixed(4)})</p>` : ''}
         ${photos.length ? `<div class="complaint-photos">${photos.join('')}</div>` : ''}
         ${c.assignedWorkerName ? `<p class="field-hint">Assigned to <b>${escapeHtml(c.assignedWorkerName)}</b> · ${escapeHtml(c.assignedRegion || '')}</p>` : ''}
-        ${c.status === 'assigned' && c.startDeadlineAt ? `<p class="field-hint">⏱ Start deadline: ${escapeHtml(new Date(c.startDeadlineAt).toLocaleString('en-IN', {hour12:true}))}</p>` : ''}
+        ${c.status === 'assigned' && c.startDeadlineAt ? `<p class="field-hint">⏱ Start deadline: ${escapeHtml(new Date(c.startDeadlineAt).toLocaleString(I18n.locale(), {hour12:true}))}</p>` : ''}
         ${assignBlock}
       </div>`;
   }
@@ -270,17 +275,11 @@ ${c.priorityReasons?.length ? `
       if (dateInput) dateInput.focus();
       return;
     }
-    // Explicit 12-hour time selection. 12 AM = 00:xx, 12 PM = 12:xx.
-    const hour12 = Number(hourInput.value);
-    const minute = Number(minuteInput.value);
-    const hour24 = (hour12 % 12) + (periodInput.value === 'PM' ? 12 : 0);
-    const [year, month, day] = dateInput.value.split('-').map(Number);
-    const localDeadline = new Date(year, month - 1, day, hour24, minute);
-    const deadlineMs = localDeadline.getTime();
-    if (!Number.isFinite(deadlineMs) || localDeadline.getFullYear() !== year ||
-        localDeadline.getMonth() !== month - 1 || localDeadline.getDate() !== day ||
-        localDeadline.getHours() !== hour24 || localDeadline.getMinutes() !== minute ||
-        deadlineMs <= Date.now()) {
+    // Time choice is explicit 12-hour AM/PM and converted in local timezone.
+    const deadlineISO = DeadlineTime.toISO(
+      dateInput.value, hourInput.value, minuteInput.value, periodInput.value
+    );
+    if (!deadlineISO) {
       toast('Choose a valid future date and time.', 'error');
       dateInput.focus();
       return;
@@ -290,7 +289,7 @@ ${c.priorityReasons?.length ? `
       if (button) button.disabled = true;
       await Api.assignComplaint(id, {
         workerId: select.value,
-        startDeadlineAt: new Date(deadlineMs).toISOString()
+        startDeadlineAt: deadlineISO
       });
       toast('Task assigned with a start deadline. The worker can now see it.', 'success');
       await loadComplaints();
