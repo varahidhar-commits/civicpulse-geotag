@@ -13,6 +13,8 @@ const WorkerPortal = (() => {
     wireFileDrop('resolve-photo-drop', 'resolve-photo');
     document.getElementById('resolve-close').addEventListener('click', () => hideModal('resolve-modal'));
     document.getElementById('resolve-submit-btn').addEventListener('click', onSubmitResolve);
+    // Update the worker's visible deadline countdown every 30 seconds.
+    setInterval(refreshStartDeadlines, 30 * 1000);
   }
 
   function switchView(name) {
@@ -38,6 +40,7 @@ const WorkerPortal = (() => {
       const { tasks } = await Api.workerTasks();
       if (!tasks.length) { el.innerHTML = '<div class="empty-state"><div class="icon">🧰</div><p>No tasks assigned yet. Check back soon.</p></div>'; return; }
       el.innerHTML = tasks.map(taskCard).join('');
+      refreshStartDeadlines();
       tasks.forEach((t) => {
         const startBtn = document.getElementById(`start-btn-${t.id}`);
         if (startBtn) startBtn.addEventListener('click', () => startTask(t.id));
@@ -47,6 +50,41 @@ const WorkerPortal = (() => {
     } catch (err) {
       el.innerHTML = alertHtml(err.message);
     }
+  }
+
+  function refreshStartDeadlines() {
+    document.querySelectorAll('#worker-tasks-list [data-start-deadline]').forEach((el) => {
+      const deadline = Date.parse(el.dataset.startDeadline);
+      if (!Number.isFinite(deadline)) {
+        el.textContent = 'Deadline unavailable';
+        return;
+      }
+      const remaining = deadline - Date.now();
+      const minutes = Math.ceil(Math.abs(remaining) / 60000);
+      const days = Math.floor(minutes / 1440);
+      const hours = Math.floor((minutes % 1440) / 60);
+      const mins = minutes % 60;
+      const parts = [days ? `${days}d` : '', hours ? `${hours}h` : '', mins || (!days && !hours) ? `${mins}m` : ''].filter(Boolean).join(' ');
+      el.textContent = remaining <= 0 ? `Overdue by ${parts}` : `Time remaining: ${parts}`;
+      el.style.color = remaining <= 0 ? '#b42318' : '#116b48';
+      el.style.fontWeight = '700';
+    });
+  }
+
+  function startDeadlineHtml(t) {
+    if (t.status !== 'assigned') return '';
+    if (!t.startDeadlineAt) {
+      return '<div class="field-hint" style="margin-top:12px">⏱ A start deadline has not been set for this assignment.</div>';
+    }
+    const deadline = new Date(t.startDeadlineAt);
+    if (Number.isNaN(deadline.getTime())) return '';
+    return `
+      <div style="margin-top:12px;padding:12px 14px;border-radius:10px;background:#eef5ff;border-left:4px solid #2c63c7">
+        <strong>⏱ Start work deadline</strong><br>
+        <span>${escapeHtml(deadline.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }))}</span><br>
+        <span data-start-deadline="${escapeHtml(t.startDeadlineAt)}" aria-live="polite"></span><br>
+        <small>This is the deadline to START the task, not to complete it. Press “Start work” before the deadline.</small>
+      </div>`;
   }
 
   function taskCard(t) {
@@ -75,6 +113,7 @@ const WorkerPortal = (() => {
         <div class="complaint-desc">${escapeHtml(t.description)}</div>
         ${t.address ? `<p class="field-hint">📍 ${escapeHtml(t.address)}</p>` : ''}
         ${photos.length ? `<div class="complaint-photos">${photos.join('')}</div>` : ''}
+        ${startDeadlineHtml(t)}
         <div class="complaint-actions">${actions}</div>
       </div>`;
   }
