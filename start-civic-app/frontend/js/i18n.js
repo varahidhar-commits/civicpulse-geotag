@@ -11,6 +11,11 @@
     ? localStorage.getItem('civic_language') : 'en';
   let observer;
   const excluded = '.complaint-desc,.complaint-title,.user-chip .avatar,.leaderboard-row .name,[data-no-translate],[contenteditable]';
+  function isExcluded(el) {
+    if (!el || !el.closest) return false;
+    const blocking = el.closest(excluded);
+    return Boolean(blocking && !el.closest('[data-i18n-allow]'));
+  }
   const attrNames = ['placeholder', 'title', 'aria-label'];
   const emojiStart = /^((?:[\p{Extended_Pictographic}\uFE0F\u200D]+\s*)+)(.*)$/u;
   const segments = [
@@ -39,9 +44,12 @@
     }
     const emoji = raw.match(emojiStart);
     if (emoji && entries[emoji[2]]) return prefix + emoji[1] + entries[emoji[2]] + suffix;
+    const icon = emoji ? emoji[1] : '';
+    const phraseText = emoji ? emoji[2] : raw;
     for (const [phrase, key] of segments) {
-      if (raw.startsWith(phrase) && Object.prototype.hasOwnProperty.call(entries, key)) {
-        return prefix + entries[key] + ': ' + raw.slice(phrase.length) + suffix;
+      if (phraseText.startsWith(phrase) && Object.prototype.hasOwnProperty.call(entries, key)) {
+        const suffixText = phraseText.slice(phrase.length);
+        return prefix + icon + entries[key] + (suffixText ? ': ' + t(suffixText) : ':') + suffix;
       }
     }
     // Translation of short relative-time display text, leaving numerals untouched.
@@ -56,7 +64,7 @@
   function translateNode(node) {
     if (!node || node.nodeType !== Node.TEXT_NODE) return;
     const parent = node.parentElement;
-    if (!parent || parent.closest(excluded)) return;
+    if (!parent || isExcluded(parent)) return;
     if (['SCRIPT','STYLE','NOSCRIPT','TEXTAREA','OPTIONAL'].includes(parent.tagName)) return;
     if (!/[A-Za-z]/.test(node.nodeValue)) {
       const state = originalText.get(node);
@@ -73,7 +81,7 @@
   }
 
   function translateAttributes(el) {
-    if (!(el instanceof Element) || el.closest(excluded)) return;
+    if (!(el instanceof Element) || isExcluded(el)) return;
     let attrState = originalAttributes.get(el);
     if (!attrState) {
       attrState = {};
