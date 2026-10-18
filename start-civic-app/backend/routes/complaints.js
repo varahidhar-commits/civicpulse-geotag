@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuid } = require('uuid');
 const { load, save } = require('../data/store');
-const { resetStartDeadline } = require('../utils/workerAlerts');
+const { resetStartDeadline, parseOfficerStartDeadline } = require('../utils/workerAlerts');
 const { requireAuth, requireRole, optionalAuth } = require('../middleware/auth');
 const { distanceMeters } = require('../utils/geo');
 const { jaccardSimilarity } = require('../utils/similarity');
@@ -332,8 +332,12 @@ router.post('/:id/confirm', requireAuth, requireRole('public'), async (req, res)
 
 // ---- Government: assign complaint to a worker/region ----
 router.post('/:id/assign', requireAuth, requireRole('government'), (req, res) => {
-  const { workerId, region } = req.body || {};
+  const { workerId, region, startDeadlineAt } = req.body || {};
   if (!workerId) return res.status(400).json({ error: 'workerId is required.' });
+  const deadline = parseOfficerStartDeadline(startDeadlineAt);
+  if (!deadline) {
+    return res.status(400).json({ error: 'Select a future start-work deadline (date and time) before assigning a worker.' });
+  }
   const db = load();
   const c = db.complaints.find((x) => x.id === req.params.id);
   if (!c) return res.status(404).json({ error: 'Complaint not found.' });
@@ -346,7 +350,7 @@ router.post('/:id/assign', requireAuth, requireRole('government'), (req, res) =>
   c.assignedWorkerName = worker.name;
   c.assignedRegion = region || worker.region || 'Central Zone';
   c.status = 'assigned';
-  resetStartDeadline(c);
+  resetStartDeadline(c, new Date(), deadline);
   save(db);
   res.json({ complaint: serializeComplaint(req, c) });
 });
@@ -417,11 +421,21 @@ router.post('/:id/feedback', requireAuth, requireRole('public'), (req, res) => {
       worker.completedTasks = (worker.completedTasks || 0) + 1;
     }
   } else {
-    // Citizen disputes the fix -> reopen for re-assignment.
-    c.status = 'assigned';
-    resetStartDeadline(c);
+    // Citizen disputes the fix -> official must assign the reopened complaint
+    // and explicitly choose another start deadline.
+    c.status = 'pending';
+    c.assignedWorkerId = null;
+    c.assignedWorkerName = null;
+    c.assignedRegion = null;
+    c.assignedById = null;
+    c.assignedAt = null;
+    c.assignmentId = null;
+    c.startDeadlineAt = null;
+    c.startedAt = null;
+    c.overdueNotifiedAt = null;
     c.photoAfter = null;
     c.resolutionConfidence = null;
+    c.resolvedAt = null;
   }
 
   save(db);
