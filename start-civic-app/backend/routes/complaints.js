@@ -332,12 +332,14 @@ router.post('/:id/confirm', requireAuth, requireRole('public'), async (req, res)
 
 // ---- Government: assign complaint to a worker/region ----
 router.post('/:id/assign', requireAuth, requireRole('government'), (req, res) => {
-  const { workerId, region, startDeadlineAt } = req.body || {};
+  const { workerId, region, startDeadlineAt, completionDeadlineAt } = req.body || {};
   if (!workerId) return res.status(400).json({ error: 'workerId is required.' });
   const deadline = parseOfficerStartDeadline(startDeadlineAt);
   if (!deadline) {
     return res.status(400).json({ error: 'Select a future start-work deadline (date and time) before assigning a worker.' });
   }
+  const completion = parseOfficerStartDeadline(completionDeadlineAt);
+  if (!completion || Date.parse(completion) <= Date.parse(deadline)) return res.status(400).json({ error: 'Choose a future completion deadline after the start deadline.' });
   const db = load();
   const c = db.complaints.find((x) => x.id === req.params.id);
   if (!c) return res.status(404).json({ error: 'Complaint not found.' });
@@ -351,6 +353,30 @@ router.post('/:id/assign', requireAuth, requireRole('government'), (req, res) =>
   c.assignedRegion = region || worker.region || 'Central Zone';
   c.status = 'assigned';
   resetStartDeadline(c, new Date(), deadline);
+  c.completionDeadlineAt = completion;
+  save(db);
+  res.json({ complaint: serializeComplaint(req, c) });
+});
+
+// Set missing legacy deadlines without resetting work or changing the assigning official.
+router.post('/:id/deadlines', requireAuth, requireRole('government'), (req, res) => {
+  const db = load();
+  const c = db.complaints.find((x) => x.id === req.params.id);
+  if (!c) return res.status(404).json({ error: 'Complaint not found.' });
+  if (c.assignedById !== req.user.id) return res.status(403).json({ error: 'Only the assigning official can set deadlines.' });
+  if (!['assigned', 'in_progress'].includes(c.status)) return res.status(409).json({ error: 'Task is not active.' });
+  const { startDeadlineAt, completionDeadlineAt } = req.body || {};
+  const start = c.startDeadlineAt || parseOfficerStartDeadline(startDeadlineAt);
+  const completion = parseOfficerStartDeadline(completionDeadlineAt);
+  if ((c.status === 'assigned' && !start) || !completion ||
+      (start && Date.parse(completion) <= Date.parse(start))) {
+    return res.status(400).json({ error: 'Choose valid future deadlines; completion must be after start.' });
+  }
+  // Existing deadlines cannot be silently extended to suppress a delay.
+  if (c.completionDeadlineAt) return res.status(409).json({ error: 'Completion deadline is already set.' });
+  c.assignmentId = c.assignmentId || require('crypto').randomUUID();
+  c.startDeadlineAt = start || null;
+  c.completionDeadlineAt = completion;
   save(db);
   res.json({ complaint: serializeComplaint(req, c) });
 });
@@ -433,6 +459,8 @@ router.post('/:id/feedback', requireAuth, requireRole('public'), (req, res) => {
     c.startDeadlineAt = null;
     c.startedAt = null;
     c.overdueNotifiedAt = null;
+    c.completionDeadlineAt = null;
+    c.completionOverdueNotifiedAt = null;
     c.photoAfter = null;
     c.resolutionConfidence = null;
     c.resolvedAt = null;

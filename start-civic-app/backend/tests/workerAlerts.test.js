@@ -73,3 +73,55 @@ test('government must choose a valid future deadline with timezone', () => {
     assert.equal(db.complaints[0].assignedAt, undefined);
   }
 });
+
+ test('completion alert occurs at deadline, independently of start alert, and persists deduplication', () => {
+  const db = fixture(); const c = db.complaints[0];
+  resetStartDeadline(c, new Date('2026-10-18T00:00:00Z'));
+  c.completionDeadlineAt = '2026-10-19T00:00:00Z';
+  scanOverdueAssignments(db, new Date('2026-10-18T12:00:00Z'));
+  c.status = 'in_progress'; c.startedAt = '2026-10-18T13:00:00Z';
+  assert.equal(scanOverdueAssignments(db, new Date('2026-10-18T23:59:59Z')), 0);
+  assert.equal(scanOverdueAssignments(db, new Date(c.completionDeadlineAt)), 1);
+  const n = db.notifications[1];
+  assert.equal(n.type, 'worker_resolution_overdue');
+  assert.equal(n.recipientId, 'officerA'); assert.equal(n.workerName, 'Worker A');
+  assert.equal(n.complaintTitle, 'Blocked road'); assert.equal(n.startedAt, c.startedAt);
+  assert.equal(n.deadlineAt, c.completionDeadlineAt);
+  const restored = JSON.parse(JSON.stringify(db));
+  restored.notifications[1].readAt = '2026-10-19T00:01:00Z';
+  restored.complaints[0].completionOverdueNotifiedAt = null;
+  assert.equal(scanOverdueAssignments(restored, new Date('2026-10-20T00:00:00Z')), 0);
+});
+
+test('resolved and verified complaints never trigger completion alerts', () => {
+  for (const status of ['resolved', 'verified', 'pending']) {
+    const db = fixture(); const c = db.complaints[0];
+    resetStartDeadline(c, new Date('2026-10-18T00:00:00Z'));
+    c.status = status; c.completionDeadlineAt = '2026-10-19T00:00:00Z';
+    assert.equal(scanOverdueAssignments(db, new Date('2026-10-20T00:00:00Z')), 0);
+  }
+});
+
+test('legacy missing or invalid deadlines and unknown assigning officials are never guessed', () => {
+  for (const status of ['assigned', 'in_progress']) {
+    for (const deadline of [undefined, null, '', 'bad date']) {
+      const db = fixture(); const c = db.complaints[0];
+      c.status = status; c.assignmentId = 'legacy';
+      c.startDeadlineAt = deadline; c.completionDeadlineAt = deadline;
+      assert.equal(scanOverdueAssignments(db, new Date('2026-10-20T00:00:00Z')), 0);
+    }
+    for (const owner of [undefined, 'unknown', 'workerA']) {
+      const db = fixture(); const c = db.complaints[0];
+      resetStartDeadline(c, new Date('2026-10-18T00:00:00Z'));
+      c.status = status; c.completionDeadlineAt = c.startDeadlineAt; c.assignedById = owner;
+      assert.equal(scanOverdueAssignments(db, new Date('2026-10-20T00:00:00Z')), 0);
+    }
+  }
+});
+
+test('reassignment clears both delay markers and requires a new completion deadline', () => {
+  const db = fixture(); const c = db.complaints[0];
+  c.completionDeadlineAt = '2026-10-19T00:00:00Z'; c.completionOverdueNotifiedAt = 'old';
+  resetStartDeadline(c, new Date('2026-10-18T00:00:00Z'));
+  assert.equal(c.completionDeadlineAt, null); assert.equal(c.completionOverdueNotifiedAt, null);
+});

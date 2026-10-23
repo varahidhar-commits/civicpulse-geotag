@@ -85,11 +85,11 @@ const GovernmentPortal = (() => {
       }
       el.innerHTML = notifications.map(n => `
         <div class="card" style="margin-bottom:12px;border-left:4px solid ${n.readAt ? '#8aa0b3' : '#e35b4f'}">
-          <div class="complaint-title" data-i18n-allow>⚠️ Worker has not started: ${escapeHtml(n.complaintTitle || 'Complaint')}</div>
+          <div class="complaint-title" data-i18n-allow>⚠️ ${n.type === 'worker_resolution_overdue' ? 'Worker delay — resolution not submitted' : 'Worker not yet started the work'}: ${escapeHtml(n.complaintTitle || 'Complaint')}</div>
           <div class="complaint-meta"><span>Assigned worker: <b>${escapeHtml(n.workerName)}</b></span>
-            <span>Start deadline: ${escapeHtml(new Date(n.deadlineAt).toLocaleString(I18n.locale(), {hour12:true}))}</span>
+            <span>${n.type === 'worker_resolution_overdue' ? 'Completion deadline' : 'Start deadline'}: ${escapeHtml(new Date(n.deadlineAt).toLocaleString(I18n.locale(), {hour12:true}))}</span>
             <span>${escapeHtml(timeAgo(n.createdAt))}</span></div>
-          <p class="field-hint">Complaint ID: ${escapeHtml(n.complaintId)}. <span>Please contact the worker or reassign the unstarted task.</span></p>
+          <p class="field-hint">Complaint ID: ${escapeHtml(n.complaintId)}. <span>${n.type === 'worker_resolution_overdue' ? 'Contact the worker about the overdue resolution.' : 'Please contact the worker or reassign the unstarted task.'}</span><br>Assigned: ${escapeHtml(n.assignedAt ? new Date(n.assignedAt).toLocaleString() : 'Unknown (legacy)')} · Started: ${escapeHtml(n.startedAt ? new Date(n.startedAt).toLocaleString() : 'Not started')}<br>Start deadline: ${escapeHtml(n.startDeadlineAt || n.deadlineAt || 'Not set')} · Completion deadline: ${escapeHtml(n.completionDeadlineAt || 'Not set')}<br>${escapeHtml(n.address || '')} · ${escapeHtml(n.region || '')} · ${escapeHtml(n.priorityLevel || '')}</p>
           ${!n.readAt ? `<button class="btn btn-outline btn-sm" data-read-alert="${escapeHtml(n.id)}">Mark as read</button>` : '<span class="field-hint">✓ Read</span>'}
         </div>`).join('');
       el.querySelectorAll('[data-read-alert]').forEach(btn => btn.addEventListener('click', async () => {
@@ -153,6 +153,8 @@ const GovernmentPortal = (() => {
       complaints.forEach((c) => {
         const assignBtn = document.getElementById(`assign-btn-${c.id}`);
         if (assignBtn) assignBtn.addEventListener('click', () => assignComplaint(c.id));
+        const deadlineBtn = document.getElementById(`deadlines-btn-${c.id}`);
+        if (deadlineBtn) deadlineBtn.addEventListener('click', () => setLegacyDeadlines(c));
       });
     } catch (err) {
       el.innerHTML = alertHtml(err.message);
@@ -194,6 +196,7 @@ const GovernmentPortal = (() => {
               </select>
             </label>
           </div>
+          <label>Submit resolution before (local date and time)<input type="datetime-local" id="completion-date-${c.id}" required></label>
           <button class="btn btn-primary btn-sm" id="assign-btn-${c.id}" ${workers.length ? '' : 'disabled'}>
             ${c.status === 'assigned' ? 'Update assignment & deadline' : 'Assign with deadline'}
           </button>
@@ -253,6 +256,10 @@ ${c.priorityReasons?.length ? `
         ${photos.length ? `<div class="complaint-photos">${photos.join('')}</div>` : ''}
         ${c.assignedWorkerName ? `<p class="field-hint">Assigned to <b>${escapeHtml(c.assignedWorkerName)}</b> · ${escapeHtml(c.assignedRegion || '')}</p>` : ''}
         ${c.status === 'assigned' && c.startDeadlineAt ? `<p class="field-hint">⏱ Start deadline: ${escapeHtml(new Date(c.startDeadlineAt).toLocaleString(I18n.locale(), {hour12:true}))}</p>` : ''}
+        ${['assigned', 'in_progress'].includes(c.status) ? `<p class="field-hint">Completion deadline: ${escapeHtml(c.completionDeadlineAt ? new Date(c.completionDeadlineAt).toLocaleString() : 'Not set — no completion delay alert until the assigning official sets it.')}</p>` : ''}
+        ${c.status === 'assigned' && !c.startDeadlineAt ? '<p class="field-hint">Legacy assignment: no start deadline is set, so no start-delay alert can be issued. Set explicit deadlines below.</p>' : ''}
+        ${['assigned', 'in_progress'].includes(c.status) && !c.completionDeadlineAt && c.assignedById === Session.user.id ? `<div><label>Start deadline (only if missing and unstarted)<input type="datetime-local" id="legacy-start-${c.id}"></label><label>Completion deadline<input type="datetime-local" id="legacy-completion-${c.id}"></label><button class="btn btn-outline btn-sm" id="deadlines-btn-${c.id}">Set missing deadlines</button></div>` : ''}
+        ${!c.assignedById && c.status === 'assigned' ? '<p class="field-hint">Assigning official is unknown. Reassign this unstarted task with explicit deadlines to enable private alerts.</p>' : ''}
         ${assignBlock}
       </div>`;
   }
@@ -284,12 +291,18 @@ ${c.priorityReasons?.length ? `
       dateInput.focus();
       return;
     }
+    const completionValue = document.getElementById(`completion-date-${id}`).value;
+    const completion = completionValue ? new Date(completionValue) : null;
+    if (!completion || !Number.isFinite(completion.getTime()) || completion <= new Date(deadlineISO)) {
+      toast('Choose a completion deadline after the start deadline.', 'error'); return;
+    }
     const button = document.getElementById(`assign-btn-${id}`);
     try {
       if (button) button.disabled = true;
       await Api.assignComplaint(id, {
         workerId: select.value,
-        startDeadlineAt: deadlineISO
+        startDeadlineAt: deadlineISO,
+        completionDeadlineAt: completion.toISOString()
       });
       toast('Task assigned with a start deadline. The worker can now see it.', 'success');
       await loadComplaints();
@@ -298,6 +311,21 @@ ${c.priorityReasons?.length ? `
     } finally {
       if (button && button.isConnected) button.disabled = false;
     }
+  }
+
+  async function setLegacyDeadlines(c) {
+    const iso = (id) => {
+      const value = document.getElementById(id).value;
+      return value && Number.isFinite(new Date(value).getTime()) ? new Date(value).toISOString() : null;
+    };
+    try {
+      await Api.setComplaintDeadlines(c.id, {
+        startDeadlineAt: iso(`legacy-start-${c.id}`),
+        completionDeadlineAt: iso(`legacy-completion-${c.id}`)
+      });
+      toast('Deadlines saved.', 'success');
+      await loadComplaints();
+    } catch (err) { toast(err.message, 'error'); }
   }
 
   async function loadGovMap() {
