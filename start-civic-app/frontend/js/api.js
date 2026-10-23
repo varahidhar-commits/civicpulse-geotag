@@ -51,6 +51,7 @@ const Api = {
   getComplaint: (id) => apiRequest(`/complaints/${id}`, { auth: false }),
   confirmComplaint: (id) => apiRequest(`/complaints/${id}/confirm`, { method: 'POST' }),
   assignComplaint: (id, payload) => apiRequest(`/complaints/${id}/assign`, { method: 'POST', body: payload }),
+  setComplaintDeadlines: (id, payload) => apiRequest(`/complaints/${id}/deadlines`, { method: 'POST', body: payload }),
   startComplaint: (id) => apiRequest(`/complaints/${id}/start`, { method: 'POST' }),
   resolveComplaint: (id, formData) => apiRequest(`/complaints/${id}/resolve`, { method: 'POST', body: formData, isForm: true }),
   feedbackComplaint: (id, payload) => apiRequest(`/complaints/${id}/feedback`, { method: 'POST', body: payload }),

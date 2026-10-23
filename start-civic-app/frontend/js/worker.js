@@ -114,6 +114,7 @@ const WorkerPortal = (() => {
         ${t.address ? `<p class="field-hint">📍 ${escapeHtml(t.address)}</p>` : ''}
         ${photos.length ? `<div class="complaint-photos">${photos.join('')}</div>` : ''}
         ${startDeadlineHtml(t)}
+        ${['assigned', 'in_progress'].includes(t.status) ? `<p class="field-hint">Submit resolution before: ${escapeHtml(t.completionDeadlineAt ? new Date(t.completionDeadlineAt).toLocaleString(I18n.locale(), {hour12:true}) : 'Not set — contact the assigning official.')}</p>` : ''}
         <div class="complaint-actions">${actions}</div>
       </div>`;
   }

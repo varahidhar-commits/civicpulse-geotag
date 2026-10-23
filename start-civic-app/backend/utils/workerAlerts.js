@@ -47,6 +47,8 @@ function resetStartDeadline(complaint, now = new Date(), officerDeadline = undef
   complaint.startDeadlineAt = deadline;
   complaint.startedAt = null;
   complaint.overdueNotifiedAt = null;
+  complaint.completionDeadlineAt = null;
+  complaint.completionOverdueNotifiedAt = null;
 }
 
 function scanOverdueAssignments(db, now = new Date()) {
@@ -56,19 +58,23 @@ function scanOverdueAssignments(db, now = new Date()) {
   let created = 0;
 
   for (const complaint of db.complaints || []) {
-    if (complaint.status !== 'assigned' || !complaint.assignedWorkerId ||
-        !complaint.assignedById || !complaint.assignmentId || !complaint.startDeadlineAt) continue;
+    const completion = complaint.status === 'in_progress';
+    if ((!completion && (complaint.status !== 'assigned' || complaint.startedAt)) || !complaint.assignedWorkerId ||
+        !complaint.assignedById || !complaint.assignmentId) continue;
+    const type = completion ? 'worker_resolution_overdue' : 'worker_not_started';
+    const marker = completion ? 'completionOverdueNotifiedAt' : 'overdueNotifiedAt';
+    const deadlineAt = completion ? complaint.completionDeadlineAt : complaint.startDeadlineAt;
 
-    const deadline = Date.parse(complaint.startDeadlineAt);
+    const deadline = Date.parse(deadlineAt);
     if (!Number.isFinite(deadline) || deadline > currentTime) continue;
 
     // An idempotency key guards against duplicate messages across repeated scans.
     const alreadySent = db.notifications.some((n) =>
-      n.type === 'worker_not_started' &&
+      n.type === type &&
       n.complaintId === complaint.id &&
       n.assignmentId === complaint.assignmentId
     );
-    if (alreadySent || complaint.overdueNotifiedAt) continue;
+    if (alreadySent || complaint[marker]) continue;
 
     // No unrelated official should receive another officer's assignment alerts.
     const official = (db.users || []).find((u) =>
@@ -79,7 +85,7 @@ function scanOverdueAssignments(db, now = new Date()) {
     const issuedAt = new Date(currentTime).toISOString();
     db.notifications.push({
       id: randomUUID(),
-      type: 'worker_not_started',
+      type,
       recipientId: official.id,
       complaintId: complaint.id,
       assignmentId: complaint.assignmentId,
@@ -87,11 +93,17 @@ function scanOverdueAssignments(db, now = new Date()) {
       workerId: complaint.assignedWorkerId,
       workerName: complaint.assignedWorkerName || 'Assigned worker',
       assignedAt: complaint.assignedAt,
-      deadlineAt: complaint.startDeadlineAt,
+      deadlineAt,
+      startDeadlineAt: complaint.startDeadlineAt || null,
+      completionDeadlineAt: complaint.completionDeadlineAt || null,
+      startedAt: complaint.startedAt || null,
+      address: complaint.address || '',
+      region: complaint.assignedRegion || '',
+      priorityLevel: complaint.priorityLevel,
       createdAt: issuedAt,
       readAt: null
     });
-    complaint.overdueNotifiedAt = issuedAt;
+    complaint[marker] = issuedAt;
     created += 1;
   }
 
